@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CPMS.NewCPPage"
+			 Title="New CP">
+
+	<Grid RowDefinitions="*,Auto">
+		<ScrollView>
+			<VerticalStackLayout x:Name="CPStackLayout" Padding="10,0">
+
+				<Label Text="Local CP Name"/>
+				<Entry x:Name="CPName" Placeholder="Enter Local CP Name"/>
+				<Label x:Name="CPLocation" Text="" TextColor="Gray" FontSize="Micro"/>
+
+				<Label Text="Username" Padding="0,10,0,0"/>
+				<Entry x:Name="Username" Placeholder="The username that the other clients see"/>
+
+				<Label Text="CP unique identifier" Padding="0,10,0,0"/>
+				<Entry x:Name="CPI" Placeholder="Repressents the CP when asking for IPs to server"/>
+
+				<Label Text="CP Encryption key" Padding="0,10,0,0"/>
+				<Entry x:Name="CPKey" Placeholder="The key used to encrypt the messages when sent, agree with message recipients"/>
+
+				<Label Text="Client Port" Padding="0,10,0,0"/>
+				<Entry x:Name="ClientPort" Placeholder="The port used to interact with other clients, Default = 42000"/>
+
+				<Label Text="Server IP" Padding="0,10,0,0"/>
+				<Entry x:Name="ServerIP" Placeholder="The server is only use to redirect IPs"/>
+
+				<Label Text="Server Port" Padding="0,10,0,0"/>
+				<Entry x:Name="ServerPort" Placeholder="The server is only use to redirect IPs, Default = 42000"/>
+
+			</VerticalStackLayout>
+		</ScrollView>
+
+		<Button	x:Name="SaveBtn"
+			Text="Save"
+			Clicked="Save_Clicked"
+			Margin="10,0,10,20"
+			Grid.Row="1"/>
+	</Grid>
+</ContentPage>

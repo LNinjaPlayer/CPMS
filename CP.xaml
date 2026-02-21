@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CPMS.CP"
+			 x:Name="CPPageTitle">
+
+	<ContentPage.ToolbarItems>
+		<ToolbarItem Text="Delete" Clicked="Delete_Clicked" />
+	</ContentPage.ToolbarItems>
+
+	<Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="*,Auto">
+		<ScrollView x:Name="CPView" Grid.Row="0" Grid.ColumnSpan="5">
+			<VerticalStackLayout x:Name="CPMSGStackLayout" Padding="10,0" Spacing="5"/>
+		</ScrollView>
+
+		<ImageButton Source="share_button.png"
+			Clicked="ShareFiles_Clicked"
+			BackgroundColor="Transparent"
+			HeightRequest="42"
+			WidthRequest="42"
+			Margin="10,0,0,20"
+			Grid.Row="1"/>
+
+		<Entry x:Name="CPMSGBox"
+			Placeholder="Message"
+			Keyboard="Chat"
+			Grid.Row="1" Grid.Column="1"
+			Margin="5,0,7,20"/>
+
+		<Button Text="Send"
+			Clicked="SendMSG_Clicked"
+			Margin="0,0,10,20"
+			Grid.Row="1" Grid.Column="2"/>
+
+		<Grid.GestureRecognizers>
+			<DropGestureRecognizer AllowDrop="True" Drop="FileDrop"/>
+		</Grid.GestureRecognizers>
+	</Grid>
+</ContentPage>
