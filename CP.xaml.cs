@@ -17,7 +17,7 @@ namespace CPMS
 	{
 		class CPProprieties
 		{
-			public static string LocalCPName = "";
+			public static string LocalCPPath = ""; // LocalCPName in CPProprietiesList
 			public static string Username = "TestUsername";
 			public static string CPI = "";
 			public static string CPKey = "TestKey";
@@ -27,7 +27,7 @@ namespace CPMS
 
 			public static void Apply(CPProprietiesList s)
 			{
-				LocalCPName = s.LocalCPName;
+				LocalCPPath = s.LocalCPName;
 				Username = Encoding.UTF8.GetString(Crypto.Decrypt(s.Username, PasswordStore.Current));
 				CPI = Encoding.UTF8.GetString(Crypto.Decrypt(s.CPI, PasswordStore.Current));
 				CPKey = Encoding.UTF8.GetString(Crypto.Decrypt(s.CPKey, PasswordStore.Current));
@@ -43,16 +43,17 @@ namespace CPMS
 			InitializeComponent();
 			CPPageTitle.Title = CPName;
 			CPProprieties.Apply(LoadCPProprieties(CPName));
-			CPProprieties.LocalCPName = Path.Combine(FileSystem.Current.AppDataDirectory, "CPs", CPName);
+			CPProprieties.LocalCPPath = Path.Combine(FileSystem.Current.AppDataDirectory, "CPs", CPName);
 			// System.IO.Path.Combine(FileSystem.Current.AppDataDirectory, "CPs", CPName, "Proprieties.txt");
 			// CP_MSG[] files = info.GetFiles().OrderBy(p => p.CreationTime).ToArray();
-			var listener = new UDPListener(this, CPProprieties.ServerPort);
+			LoadChatLog();
+			var listener = new UDPListener(this);
 			listener.StartListener();
 		}
 
 		private async void Delete_Clicked(object s, EventArgs e)
 		{
-			Directory.Delete(CPProprieties.LocalCPName, recursive: true);
+			Directory.Delete(CPProprieties.LocalCPPath, recursive: true);
 			await Navigation.PopAsync();
 		}
 
@@ -75,16 +76,23 @@ namespace CPMS
 			}
 			return result;
 		}
-		private async void MSG(string User, byte[] message, MessageType _messagetype)
+		private static Grid MSGViewBuilderFromBin(string? timeStamp)
 		{
+			if (string.IsNullOrEmpty(timeStamp)) return [];
+			byte[] bytes = File.ReadAllBytes(Path.Combine(CPProprieties.LocalCPPath, timeStamp));
+			MessageType messagetype = (MessageType)(bytes[0]);
+			bytes = bytes[1..];
+			var UTF8bytes = Encoding.UTF8.GetString(bytes);
+			var username = UTF8bytes[0..UTF8bytes.IndexOf(':')];
+			var message = bytes[(UTF8bytes.IndexOf(':') + 1)..];
 			Grid MSGBoundingBox = new() { RowDefinitions = { new RowDefinition(), new RowDefinition() } };
 
-			MSGBoundingBox.Add(new Label { Text = User }, 0, 0);
-			if (_messagetype == MessageType.txt)
+			MSGBoundingBox.Add(new Label { Text = username }, 0, 0);
+			if (messagetype == MessageType.txt)
 			{
 				MSGBoundingBox.Add(new Label { Text = Encoding.UTF8.GetString(Crypto.Decrypt(message, CPProprieties.CPKey)), Margin = 5 }, 0, 1);
 			}
-			else if (_messagetype == MessageType.image)
+			else if (messagetype == MessageType.image)
 			{
 				var image = new Image { Source = ImageSource.FromStream(() => new MemoryStream(Crypto.Decrypt((byte[])message, CPProprieties.CPKey))), Margin = 5 };
 				MSGBoundingBox.Add(image, 0, 1);
@@ -94,18 +102,37 @@ namespace CPMS
 				image.IsAnimationPlaying = true;
 				// MSGBoundingBox.Add(new Label { Text = "Image messages not supported yet", Margin = 5 }, 0, 1);
 			}
-			CPMSGStackLayout.Children.Add(MSGBoundingBox);
+			return MSGBoundingBox;
+		}
+
+		private async void ChatLogUpdate(Grid[] MSGViewList, int index)
+		{
+			CPMSGStackLayout.Children.Clear();
+			foreach (var MSGView in MSGViewList)
+			{
+				CPMSGStackLayout.Children.Insert(index, MSGView);
+				index++;
+			}
 			await CPView.ScrollToAsync(CPMSGStackLayout, ScrollToPosition.End, false);
 		}
 
-		public class UDPListener(CP CP, int listenPort)
+		private void LoadChatLog()
+		{
+			CPMSGStackLayout.Children.Clear();
+			int index = 0;
+			var MSGViewList = Directory.EnumerateFiles(CPProprieties.LocalCPPath).Where(f => Path.GetFileName(f) != "Proprieties.xml")
+				.Select(Path.GetFileName).OrderBy(name => name).Select(MSGViewBuilderFromBin).Where(grid => grid is not null).ToArray();
+			ChatLogUpdate(MSGViewList, index);
+		}
+
+		public class UDPListener(CP CP)
 		{
 			private readonly CP _CP = CP;
 			private static readonly int _listenPort = CPProprieties.ServerPort;
 			private static readonly UdpClient listener = new(_listenPort);
 			public async void StartListener()
 			{
-				var groupEP = new IPEndPoint(IPAddress.Any, listenPort);
+				//var groupEP = new IPEndPoint(IPAddress.Any, CPProprieties.ServerPort);
 				//var binWriter = new BinaryWriter(new FileStream(CPProprieties.CPName, FileMode.Create, FileAccess.ReadWrite));
 				//var binReader = new BinaryReader(binWriter.BaseStream);
 				try
@@ -118,15 +145,12 @@ namespace CPMS
 						var result = new byte[bytes.Length - 18];
 						Buffer.BlockCopy(bytes, 18, result, 0, result.Length);
 						bytes = result;
-						File.Create(Path.Combine(CPProprieties.LocalCPName, timeStamp)).Close();
-						var binWriter = new BinaryWriter(new FileStream(Path.Combine(CPProprieties.LocalCPName, timeStamp), FileMode.Create, FileAccess.ReadWrite));
+						File.Create(Path.Combine(CPProprieties.LocalCPPath, timeStamp)).Close();
+						var binWriter = new BinaryWriter(new FileStream(Path.Combine(CPProprieties.LocalCPPath, timeStamp), FileMode.Create, FileAccess.ReadWrite));
 						binWriter.Write(bytes);
-						MessageType messagetype = (MessageType)(bytes[0]);
-						bytes = bytes[1..];
-						var UTF8bytes = Encoding.UTF8.GetString(bytes);
-						var username = UTF8bytes[0..UTF8bytes.IndexOf(':')];
-						var message = bytes[(UTF8bytes.IndexOf(':')+1)..];
-						MainThread.BeginInvokeOnMainThread( () => _CP.MSG(username, message, messagetype) );
+						binWriter.Flush();
+						binWriter.Close();
+						MainThread.BeginInvokeOnMainThread(async () => { Grid[] MSGViewList = [MSGViewBuilderFromBin(timeStamp)]; _CP.LoadChatLog(); } );
 					}
 				}
 				catch (SocketException e)

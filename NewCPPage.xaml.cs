@@ -1,6 +1,6 @@
 ﻿using System.Text;
 using System.Xml.Serialization;
-
+#pragma warning disable CA2249
 namespace CPMS
 {
     public partial class NewCPPage : ContentPage
@@ -28,9 +28,9 @@ namespace CPMS
 			else if (Username.Text.IndexOf(':') >= 0) await DisplayAlertAsync("Error", $"Username cannot contain ':'\nEverything else is allowed", "OK"); // .Contains() is slower than .IndexOf(), just a random micro-optimization, for that 0.1ms diffenrence, probably not even with complier optimizations but I'm making fun of optimization for my crappy code
 			else if (string.IsNullOrEmpty(CPI.Text)) await DisplayAlertAsync("Error", "You have to have a CP identifier", "OK");
 			else if (string.IsNullOrEmpty(CPKey.Text)) await DisplayAlertAsync("Error", "You have to have a CP Encryption key", "OK");
-			else if (!int.TryParse(ClientPort.Text, out _)) if (!string.IsNullOrEmpty(ClientPort.Text)) await DisplayAlertAsync("Error", "You have to have a valid Client Port", "OK");
+			else if (!string.IsNullOrEmpty(ClientPort.Text)) if (!int.TryParse(ClientPort.Text, out _)) await DisplayAlertAsync("Error", "You have to have a valid Client Port", "OK");
 			else if (string.IsNullOrEmpty(ServerIP.Text)) await DisplayAlertAsync("Error", "You have to have a Server IP", "OK");
-			else if (!int.TryParse(ServerPort.Text, out _)) if (!string.IsNullOrEmpty(ServerPort.Text)) await DisplayAlertAsync("Error", "You have to have a valid Server Port", "OK");
+			else if (!string.IsNullOrEmpty(ServerPort.Text)) if (!int.TryParse(ServerPort.Text, out _)) await DisplayAlertAsync("Error", "You have to have a valid Server Port", "OK");
 			else
 			{
 				var dir = System.IO.Path.Combine(FileSystem.Current.AppDataDirectory, "CPs", CPName.Text);
