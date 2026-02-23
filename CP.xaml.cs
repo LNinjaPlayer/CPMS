@@ -18,12 +18,12 @@ namespace CPMS
 		class CPProprieties
 		{
 			public static string LocalCPPath = ""; // LocalCPName in CPProprietiesList
-			public static string Username = "TestUsername";
+			public static string Username = "";
 			public static string CPI = "";
-			public static string CPKey = "TestKey";
-			public static int ClientPort = 42000;
-			public static string ServerIP = "82.225.58.132";
-			public static int ServerPort = 42000;
+			public static string CPKey = "";
+			public static int ClientPort;
+			public static string ServerIP = "";
+			public static int ServerPort;
 
 			public static void Apply(CPProprietiesList s)
 			{
