@@ -96,7 +96,7 @@ namespace CPMS
 				CPButton.Clicked += async (s, e) =>
 				{
 					Page CPPage = new CP(CPName);
-					CPPage.Disappearing += (s, e) => { ReloadCPList(); };
+					CPPage.Disappearing += (s, e) => { UDPListener.Close(); ReloadCPList(); };
 
 					if (Settings.PasswordPromptCPPageEnter) { await Navigation.PushAsync(CPPage); PromptPassword(); }
 					else { await Navigation.PushAsync(CPPage); }

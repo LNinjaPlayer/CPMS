@@ -61,7 +61,7 @@ namespace CPMS
 		{
 			if (string.IsNullOrEmpty(CPMSGBox.Text)) return;
 			byte[] message = MakeMessage(Encoding.UTF8.GetBytes(CPMSGBox.Text), MessageType.txt);
-			UDPClientExample.SendBroadcast(message, CPProprieties.ServerPort, CPProprieties.ServerIP);
+			UDPClient.SendBroadcast(message, CPProprieties.ServerPort, CPProprieties.ServerIP);
 		}
 		private static byte[] MakeMessage(byte[] message, MessageType messageType)
 		{
@@ -128,18 +128,17 @@ namespace CPMS
 		public class UDPListener(CP CP)
 		{
 			private readonly CP _CP = CP;
-			private static readonly int _listenPort = CPProprieties.ServerPort;
-			private static readonly UdpClient listener = new(_listenPort);
+			private static CancellationTokenSource? cts = null;
 			public async void StartListener()
 			{
 				//var groupEP = new IPEndPoint(IPAddress.Any, CPProprieties.ServerPort);
-				//var binWriter = new BinaryWriter(new FileStream(CPProprieties.CPName, FileMode.Create, FileAccess.ReadWrite));
-				//var binReader = new BinaryReader(binWriter.BaseStream);
+				UdpClient listener = new(CPProprieties.ServerPort);
 				try
 				{
-					while (true)
+					cts = new CancellationTokenSource();
+					while (cts != null)
 					{
-						UdpReceiveResult Receiveresult = await listener.ReceiveAsync();
+						UdpReceiveResult Receiveresult = await listener.ReceiveAsync().WithCancellation(cts.Token);
 						byte[] bytes = Receiveresult.Buffer;
 						var timeStamp = Encoding.ASCII.GetString(bytes)[0..18];
 						var result = new byte[bytes.Length - 18];
@@ -152,22 +151,17 @@ namespace CPMS
 						binWriter.Close();
 						MainThread.BeginInvokeOnMainThread(async () => { Grid[] MSGViewList = [MSGViewBuilderFromBin(timeStamp)]; _CP.LoadChatLog(); } );
 					}
-				}
-				catch (SocketException e)
-				{
-					Debug.WriteLine(e);
-				}
-				finally
-				{
 					listener.Close();
+					listener.Dispose();
 				}
+				catch (OperationCanceledException) { listener.Close(); }
+				catch (SocketException e) { Debug.WriteLine(e); }
+				finally { Close(); }
 			}
-			public static void Close()
-			{
-				listener.Close();
-			}
+			public static void Close() { cts?.Cancel(); cts = null; }
 		}
-		public class UDPClientExample
+
+		public class UDPClient
 		{
 			public static async void SendBroadcast(byte[] message, int listenPort, string broadcastIP)
 			{
@@ -208,10 +202,20 @@ namespace CPMS
 					byte[] message;
 					if (ImageExtensions.Contains(Path.GetExtension(filepath).ToUpperInvariant())) message = MakeMessage(File.ReadAllBytes(filepath), MessageType.image); 
 					else message = MakeMessage(File.ReadAllBytes(filepath), MessageType.file);
-					UDPClientExample.SendBroadcast(message, CPProprieties.ServerPort, CPProprieties.ServerIP);
+					UDPClient.SendBroadcast(message, CPProprieties.ServerPort, CPProprieties.ServerIP);
 				}
 			}
 #endif
+		}
+	}
+	public static class AsyncExtensions
+	{
+		public static async Task<T> WithCancellation<T>(this Task<T> task, CancellationToken cancellationToken)
+		{
+			var tcs = new TaskCompletionSource<bool>();
+			using (cancellationToken.Register(s => (s as TaskCompletionSource<bool>)?.TrySetResult(true), tcs)) {
+				if (task != await Task.WhenAny(task, tcs.Task)) throw new OperationCanceledException(cancellationToken); }
+			return task.Result;
 		}
 	}
 }
