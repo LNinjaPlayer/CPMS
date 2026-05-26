@@ -39,7 +39,7 @@ namespace CPMS
 			InitializeComponent();
 			var loaded = SettingsManager.Load();
 			Settings.Apply(loaded);
-			PromptPassword();
+			PromptPassword(null);
 			ReloadCPList();
 			Task.Run(() => StartPasswordLoop());
 		}
@@ -50,13 +50,13 @@ namespace CPMS
 				if (PasswordPromptLoopVariables.TimeKeep > Settings.TimeoutMs && !PasswordPromptLoopVariables.PausePasswordLoop)
 				{
 					PasswordPromptLoopVariables.TimeKeep = 0;
-					await MainThread.InvokeOnMainThreadAsync(async () => PromptPassword());
+					await MainThread.InvokeOnMainThreadAsync(async () => PromptPassword(null));
 				}
 				if (PasswordPromptLoopVariables.PausePasswordLoop == false) PasswordPromptLoopVariables.TimeKeep += 100;
-				Thread.Sleep(100);
+				await Task.Delay(100);
 			}
 		}
-		private async void PromptPassword()
+		private async void PromptPassword(string? CPPageAfterPrompt)
 		{
 			PasswordPromptLoopVariables.PausePasswordLoop = true;
 			PasswordStore.Clear();
@@ -66,6 +66,7 @@ namespace CPMS
 			{
 				PasswordStore.Set(passwordPage.Password);
 				PasswordPromptLoopVariables.PausePasswordLoop = false;
+				if (CPPageAfterPrompt != null) Task.Run(() => OpenCPPage(CPPageAfterPrompt));
 			};
 		}
 
@@ -95,14 +96,18 @@ namespace CPMS
                 CPStackLayout.Children.Add(CPButton);
 				CPButton.Clicked += async (s, e) =>
 				{
-					Page CPPage = new CP(CPName);
-					CPPage.Disappearing += (s, e) => { UDPListener.Close(); ReloadCPList(); };
-
-					if (Settings.PasswordPromptCPPageEnter) { await Navigation.PushAsync(CPPage); PromptPassword(); }
-					else { await Navigation.PushAsync(CPPage); }
+					if (Settings.PasswordPromptCPPageEnter) PromptPassword(CPName);
+					else await OpenCPPage(CPName);
 				};
 			}
         }
+
+		private async Task OpenCPPage(string CPName)
+		{
+			var CPPage = new CP(CPName);
+			CPPage.Disappearing += (s, e) => { UDPListener.Close(); ReloadCPList(); };
+			await MainThread.InvokeOnMainThreadAsync(async () => await Navigation.PushAsync(CPPage));
+		}
 
 		public class PasswordPromptLoopVariables
 		{

@@ -1,7 +1,8 @@
 ﻿using System.Diagnostics;
-using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Serialization;
 using static CPMS.NewCPPage;
@@ -10,6 +11,7 @@ using static CPMS.NewCPPage;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 #endif
+
 
 namespace CPMS
 {
@@ -61,7 +63,7 @@ namespace CPMS
 		{
 			if (string.IsNullOrEmpty(CPMSGBox.Text)) return;
 			byte[] message = MakeMessage(Encoding.UTF8.GetBytes(CPMSGBox.Text), MessageType.txt);
-			UDPClient.SendBroadcast(message, CPProprieties.ServerPort, CPProprieties.ServerIP);
+			UDPClient.SendBroadcast(message, CPProprieties.ClientPort, CPProprieties.ServerIP); // TEMP
 		}
 		private static byte[] MakeMessage(byte[] message, MessageType messageType)
 		{
@@ -125,36 +127,64 @@ namespace CPMS
 			ChatLogUpdate(MSGViewList, index);
 		}
 
+		
+
 		public class UDPListener(CP CP)
 		{
 			private readonly CP _CP = CP;
 			private static CancellationTokenSource? cts = null;
 			public async void StartListener()
 			{
-				//var groupEP = new IPEndPoint(IPAddress.Any, CPProprieties.ServerPort);
-				UdpClient listener = new(CPProprieties.ServerPort);
+				IPEndPoint serverEP = new(IPAddress.Parse(CPProprieties.ServerIP), CPProprieties.ServerPort);
+				UdpClient udpServer = new() { ExclusiveAddressUse = false };
+				udpServer.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+
+				var localIPv4 = IPAddress.Parse("192.168.1.69"); //TEMP TODO use localIPV4list
+				udpServer.Client.Bind(new IPEndPoint(localIPv4, CPProprieties.ClientPort));
+				udpServer.Connect(serverEP);
+				var localIPV4list = Dns.GetHostEntry(string.Empty).AddressList.Where(ip => ip.AddressFamily == AddressFamily.InterNetwork); // TODO if the user has multiple network adapters this will cause issues, need to find a way to bind to the correct one, maybe by checking which one can reach the serverIP?
+
+				RequestPCP(GetDefaultGateway(), localIPv4, (UInt16)CPProprieties.ClientPort, 300);
+				using (HttpClient client = new())
+				{
+					string natIPAddress = await client.GetStringAsync("https://api.ipify.org");
+					UDPClient.SendBroadcast(Crypto.Encrypt(Encoding.UTF8.GetBytes($"{CPProprieties.Username}:{natIPAddress.Trim()}:{CPProprieties.ClientPort}"), CPProprieties.CPI), CPProprieties.ServerPort, CPProprieties.ServerIP);
+				}
+
+				UdpClient listener = new(CPProprieties.ClientPort);
 				try
 				{
 					cts = new CancellationTokenSource();
 					while (cts != null)
 					{
 						UdpReceiveResult Receiveresult = await listener.ReceiveAsync().WithCancellation(cts.Token);
+						var remote = Receiveresult.RemoteEndPoint;
+						Debug.WriteLine($"RECEIVED SOMETHING from : {remote.Address}:{remote.Port}");
 						byte[] bytes = Receiveresult.Buffer;
 						var timeStamp = Encoding.ASCII.GetString(bytes)[0..18];
 						var result = new byte[bytes.Length - 18];
 						Buffer.BlockCopy(bytes, 18, result, 0, result.Length);
 						bytes = result;
-						File.Create(Path.Combine(CPProprieties.LocalCPPath, timeStamp)).Close();
-						var binWriter = new BinaryWriter(new FileStream(Path.Combine(CPProprieties.LocalCPPath, timeStamp), FileMode.Create, FileAccess.ReadWrite));
-						binWriter.Write(bytes);
-						binWriter.Flush();
-						binWriter.Close();
-						MainThread.BeginInvokeOnMainThread(async () => { Grid[] MSGViewList = [MSGViewBuilderFromBin(timeStamp)]; _CP.LoadChatLog(); } );
+						if (bytes[0] != (byte)MessageType.server)
+						{
+							File.Create(Path.Combine(CPProprieties.LocalCPPath, timeStamp)).Close();
+							var binWriter = new BinaryWriter(new FileStream(Path.Combine(CPProprieties.LocalCPPath, timeStamp), FileMode.Create, FileAccess.ReadWrite));
+							binWriter.Write(bytes);
+							binWriter.Flush();
+							binWriter.Close();
+							MainThread.BeginInvokeOnMainThread(async () => { Grid[] MSGViewList = [MSGViewBuilderFromBin(timeStamp)]; _CP.LoadChatLog(); });
+						}
+						else
+						{
+							Debug.WriteLine($"RECEIVED SERVER MSG at {timeStamp}");
+						}
 					}
 					listener.Close();
 					listener.Dispose();
+					udpServer.Close();
+					udpServer.Dispose();
 				}
-				catch (OperationCanceledException) { listener.Close(); }
+				catch (OperationCanceledException) { listener.Close(); udpServer.Close(); }
 				catch (SocketException e) { Debug.WriteLine(e); }
 				finally { Close(); }
 			}
@@ -166,16 +196,101 @@ namespace CPMS
 			public static async void SendBroadcast(byte[] message, int listenPort, string broadcastIP)
 			{
 				Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp) { EnableBroadcast = true };
-				var broadcast = IPAddress.Parse(broadcastIP);
-				var groupEP = new IPEndPoint(broadcast, listenPort);
-				socket.SendTo(message, groupEP);
+				socket.SendTo(message, new IPEndPoint(IPAddress.Parse(broadcastIP), listenPort));
 			}
+		}
+
+		private static void RequestPCP(IPAddress NATIP, IPAddress localIPv4, UInt16 requestedport, int lifetime)
+		{
+			// byte[] message = MakeMessage(Encoding.UTF8.GetBytes("Requesting PCP"), MessageType.server);
+			// UDPClient.SendBroadcast(message, CPProprieties.ClientPort, CPProprieties.ServerIP);
+
+			Debug.WriteLine(NATIP.ToString());
+			byte[] request = new byte[60]; // PCP MAP request size
+
+			// PCP Common Header
+			request[0] = 2; // Version
+			request[1] = 1; // MAP Opcode
+			Array.Copy(BitConverter.GetBytes(IPAddress.HostToNetworkOrder(lifetime)), 0, request, 4, 4);
+
+			// Client IP Address (16 bytes)
+			byte[] clientIpBytes = localIPv4.MapToIPv6().GetAddressBytes();
+			Array.Copy(clientIpBytes, 0, request, 8, 16);
+
+			// Mapping Nonce (96 bits = 12 bytes)
+			byte[] nonce = new byte[12];
+			RandomNumberGenerator.Fill(nonce);
+			Array.Copy(nonce, 0, request, 24, 12);
+
+			// MAP Opcode fields
+			request[36] = 17; // Protocol = UDP (17)
+
+			// Internal port
+			Array.Copy(BitConverter.GetBytes(IPAddress.HostToNetworkOrder((short)requestedport)), 0, request, 40, 2);
+
+			// Suggested external port
+			Array.Copy(BitConverter.GetBytes(IPAddress.HostToNetworkOrder((short)requestedport)), 0, request, 42, 2);
+
+			using var client = new UdpClient();
+			client.Client.ReceiveTimeout = 3000;
+
+			client.Send(request, request.Length, new IPEndPoint(NATIP, 5351));
+
+			try
+			{
+				var remote = new IPEndPoint(IPAddress.Any, 0);
+				byte[] response = client.Receive(ref remote);
+				Debug.WriteLine("PCP response received (" + response.Length + " bytes)");
+			}
+			catch (SocketException)
+			{
+				Debug.WriteLine("No PCP response received.");
+			}
+		}
+		public static IPAddress GetDefaultGateway()
+		{
+#if ANDROID
+			var p = new Process
+			{
+				StartInfo = new ProcessStartInfo
+				{
+					FileName = "/system/bin/ip",
+					Arguments = "route",
+					RedirectStandardOutput = true,
+					UseShellExecute = false,
+					CreateNoWindow = true
+				}
+			};
+			p.Start();
+			string output = p.StandardOutput.ReadToEnd();
+			var parts = output.Split('\n');
+			foreach (var line in parts)
+			{
+				if (line.StartsWith("default"))
+				{
+					var tokens = line.Split(' ');
+					int index = Array.IndexOf(tokens, "via");
+					if (index >= 0 && index + 1 < tokens.Length) return IPAddress.Parse(tokens[index + 1]);
+				}
+			}
+			return IPAddress.Parse("192.168.1.254"); // Common FALLBACK if parsing fails
+#else
+			var gateway_address = NetworkInterface.GetAllNetworkInterfaces()
+				.Where(e => e.OperationalStatus == OperationalStatus.Up)
+				.SelectMany(e => e.GetIPProperties().GatewayAddresses)
+				.Select(g => g?.Address)
+				.Where(a => a?.AddressFamily == AddressFamily.InterNetwork)
+				.FirstOrDefault();
+			if (gateway_address == null) return IPAddress.Parse("192.168.1.254"); // Common FALLBACK if parsing fails
+			return gateway_address;
+#endif
 		}
 		public enum MessageType
 		{
 			txt = (byte)1,
 			image = (byte)2,
-			file = (byte)64
+			file = (byte)8,
+			server = (byte)128
 		}
 		private static CPProprietiesList LoadCPProprieties(string CPName)
 		{
@@ -188,7 +303,7 @@ namespace CPMS
 		}
 
 		private async void FileDrop(object s, DropEventArgs e)
-		{ // Not going to do it for other platforms, no u Apple, Linux and Android, you will have to use **A BUTTON** to send files °O°
+		{ // Not going to do it for other platforms, no u Apple, Linux and Android, you will have to use **A BUTTON** to send files \(°O°)/
 #if WINDOWS
 			var items = await e.PlatformArgs?.DragEventArgs.DataView.GetStorageItemsAsync();
 			var filePaths = new List<string>();

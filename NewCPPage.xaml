@@ -22,7 +22,7 @@
 				<Entry x:Name="CPKey" Placeholder="The key used to encrypt the messages when sent, agree with message recipients"/>
 
 				<Label Text="Client Port" Padding="0,10,0,0"/>
-				<Entry x:Name="ClientPort" Placeholder="The port used to interact with other clients, Default = 42000"/>
+				<Entry x:Name="ClientPort" Placeholder="The port used to interact with other clients, Default = 42069"/>
 
 				<Label Text="Server IP" Padding="0,10,0,0"/>
 				<Entry x:Name="ServerIP" Placeholder="The server is only use to redirect IPs"/>

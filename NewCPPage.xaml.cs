@@ -23,14 +23,18 @@ namespace CPMS
 		}
 		private async void Save_Clicked(object sender, EventArgs e)
         {
+			if (string.IsNullOrEmpty(ClientPort.Text)) ClientPort.Text = "42069";
+			if (string.IsNullOrEmpty(ServerPort.Text)) ServerPort.Text = "42000";
 			if (!IsValidFolderName(CPName.Text, out var reason)) await DisplayAlertAsync("Error", reason, "OK");
 			else if (string.IsNullOrEmpty(Username.Text)) await DisplayAlertAsync("Error", "You have to have a username", "OK");
 			else if (Username.Text.IndexOf(':') >= 0) await DisplayAlertAsync("Error", $"Username cannot contain ':'\nEverything else is allowed", "OK"); // .Contains() is slower than .IndexOf(), just a random micro-optimization, for that 0.1ms diffenrence, probably not even with complier optimizations but I'm making fun of optimization for my crappy code
 			else if (string.IsNullOrEmpty(CPI.Text)) await DisplayAlertAsync("Error", "You have to have a CP identifier", "OK");
 			else if (string.IsNullOrEmpty(CPKey.Text)) await DisplayAlertAsync("Error", "You have to have a CP Encryption key", "OK");
-			else if (!string.IsNullOrEmpty(ClientPort.Text)) if (!int.TryParse(ClientPort.Text, out _)) await DisplayAlertAsync("Error", "You have to have a valid Client Port", "OK");
 			else if (string.IsNullOrEmpty(ServerIP.Text)) await DisplayAlertAsync("Error", "You have to have a Server IP", "OK");
-			else if (!string.IsNullOrEmpty(ServerPort.Text)) if (!int.TryParse(ServerPort.Text, out _)) await DisplayAlertAsync("Error", "You have to have a valid Server Port", "OK");
+			else if(!UInt16.TryParse(ClientPort.Text, out _)) await DisplayAlertAsync("Error", $"You have to have a valid Client Port\nPort must be between 1 and 65535", "OK");
+			else if (!UInt16.TryParse(ServerPort.Text, out _)) await DisplayAlertAsync("Error", $"You have to have a valid Server Port\nPort must be between 1 and 65535", "OK");
+			else if (ClientPort.Text == ServerPort.Text) await DisplayAlertAsync("Error", "Client Port and Server Port must be different", "OK");
+			else if ((UInt16.Parse(ClientPort.Text) < 1) || (UInt16.Parse(ServerPort.Text) < 1)) await DisplayAlertAsync("Error", "Client/Server Port must be above 0", "OK");
 			else
 			{
 				var dir = System.IO.Path.Combine(FileSystem.Current.AppDataDirectory, "CPs", CPName.Text);
@@ -41,10 +45,9 @@ namespace CPMS
 					Username = Crypto.Encrypt(Encoding.UTF8.GetBytes(Username.Text), PasswordStore.Current),
 					CPI = Crypto.Encrypt(Encoding.UTF8.GetBytes(CPI.Text), PasswordStore.Current),
 					CPKey = Crypto.Encrypt(Encoding.UTF8.GetBytes(CPKey.Text), PasswordStore.Current),
-					ClientPort = Crypto.Encrypt(Encoding.UTF8.GetBytes((int.TryParse(ClientPort.Text, out var cport) ? cport : 42000).ToString()), PasswordStore.Current),
+					ClientPort = Crypto.Encrypt(Encoding.UTF8.GetBytes(ClientPort.Text), PasswordStore.Current),
 					ServerIP = Crypto.Encrypt(Encoding.UTF8.GetBytes(ServerIP.Text), PasswordStore.Current),
-					ServerPort = Crypto.Encrypt(Encoding.UTF8.GetBytes((int.TryParse(ServerPort.Text, out var sport) ? sport : 42000).ToString()), PasswordStore.Current)
-
+					ServerPort = Crypto.Encrypt(Encoding.UTF8.GetBytes(ServerPort.Text), PasswordStore.Current)
 				});
 				await Navigation.PopAsync();
 			}
