@@ -7,3 +7,6 @@ Currently working things :
 - local file encryption with no password stored on device, does a password prompt and stores in RAM and auto clears after a set perriod of time that is adjustable
 - encrypted messaging with custom encryption method, use the password from the password prompt to save the encryption for messaging
 - Load chat log
+- portforwarding with UPnP IGD
+
+A separate server program is being worked on to allow encrypted IP passing (but NOT messages) to be sent to other clients on the same server (the server will know the IPs), the messages are P2P and encrypted.

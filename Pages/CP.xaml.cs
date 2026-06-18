@@ -146,6 +146,7 @@ namespace CPMS
 				var externalIP = await device.GetExternalIPAsync(cts.Token);
 				var portMapping = new CPMS.Methods.Mapping(Protocol.Udp, privatePort: CPProprieties.ClientPort, publicPort: CPProprieties.ClientPort, privateIP: localIPv4, description: "UDP for CPMS", lifetime: 300);
 				await device.CreatePortMapAsync(portMapping, cts.Token);
+				// await device.DeletePortMapAsync(mapping, cts.Token); // To delete the mapping when done
 
 				IPEndPoint serverEP = new(IPAddress.Parse(CPProprieties.ServerIP), CPProprieties.ServerPort);
 				UdpClient udpServer = new() { ExclusiveAddressUse = false };
