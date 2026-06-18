@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using CPMS.Methods;
 namespace CPMS;
 
 public partial class SettingsPage : ContentPage

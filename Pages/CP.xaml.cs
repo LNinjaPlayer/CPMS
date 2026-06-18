@@ -1,11 +1,15 @@
 ﻿using System.Diagnostics;
 using System.Net;
+using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Serialization;
+using CPMS.Methods;
 using static CPMS.NewCPPage;
+
+
 
 #if WINDOWS
 using Windows.ApplicationModel.DataTransfer;
@@ -96,7 +100,7 @@ namespace CPMS
 			}
 			else if (messagetype == MessageType.image)
 			{
-				var image = new Image { Source = ImageSource.FromStream(() => new MemoryStream(Crypto.Decrypt((byte[])message, CPProprieties.CPKey))), Margin = 5 };
+				var image = new Microsoft.Maui.Controls.Image { Source = ImageSource.FromStream(() => new MemoryStream(Crypto.Decrypt((byte[])message, CPProprieties.CPKey))), Margin = 5 };
 				MSGBoundingBox.Add(image, 0, 1);
 				image.MaximumHeightRequest = 2000;
 				image.MaximumWidthRequest = 2000;
@@ -135,26 +139,26 @@ namespace CPMS
 			private static CancellationTokenSource? cts = null;
 			public async void StartListener()
 			{
+				cts = new CancellationTokenSource();
+
+				var discoverer = new CPMS.Methods.NatDiscoverer();
+				var (device, localIPv4) = await discoverer.DiscoverDeviceAsync(cts.Token);
+				var externalIP = await device.GetExternalIPAsync(cts.Token);
+				var portMapping = new CPMS.Methods.Mapping(Protocol.Udp, privatePort: CPProprieties.ClientPort, publicPort: CPProprieties.ClientPort, privateIP: localIPv4, description: "UDP for CPMS", lifetime: 300);
+				await device.CreatePortMapAsync(portMapping, cts.Token);
+
 				IPEndPoint serverEP = new(IPAddress.Parse(CPProprieties.ServerIP), CPProprieties.ServerPort);
 				UdpClient udpServer = new() { ExclusiveAddressUse = false };
 				udpServer.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-
-				var localIPv4 = IPAddress.Parse("192.168.1.69"); //TEMP TODO use localIPV4list
 				udpServer.Client.Bind(new IPEndPoint(localIPv4, CPProprieties.ClientPort));
 				udpServer.Connect(serverEP);
-				var localIPV4list = Dns.GetHostEntry(string.Empty).AddressList.Where(ip => ip.AddressFamily == AddressFamily.InterNetwork); // TODO if the user has multiple network adapters this will cause issues, need to find a way to bind to the correct one, maybe by checking which one can reach the serverIP?
-
-				RequestPCP(GetDefaultGateway(), localIPv4, (UInt16)CPProprieties.ClientPort, 300);
-				using (HttpClient client = new())
-				{
-					string natIPAddress = await client.GetStringAsync("https://api.ipify.org");
-					UDPClient.SendBroadcast(Crypto.Encrypt(Encoding.UTF8.GetBytes($"{CPProprieties.Username}:{natIPAddress.Trim()}:{CPProprieties.ClientPort}"), CPProprieties.CPI), CPProprieties.ServerPort, CPProprieties.ServerIP);
-				}
-
+				
+				UDPClient.SendBroadcast(Crypto.Encrypt(Encoding.UTF8.GetBytes($"{CPProprieties.Username}:{externalIP}:{CPProprieties.ClientPort}"), CPProprieties.CPI), CPProprieties.ServerPort, CPProprieties.ServerIP);
+				
 				UdpClient listener = new(CPProprieties.ClientPort);
+
 				try
 				{
-					cts = new CancellationTokenSource();
 					while (cts != null)
 					{
 						UdpReceiveResult Receiveresult = await listener.ReceiveAsync().WithCancellation(cts.Token);
@@ -200,91 +204,6 @@ namespace CPMS
 			}
 		}
 
-		private static void RequestPCP(IPAddress NATIP, IPAddress localIPv4, UInt16 requestedport, int lifetime)
-		{
-			// byte[] message = MakeMessage(Encoding.UTF8.GetBytes("Requesting PCP"), MessageType.server);
-			// UDPClient.SendBroadcast(message, CPProprieties.ClientPort, CPProprieties.ServerIP);
-
-			Debug.WriteLine(NATIP.ToString());
-			byte[] request = new byte[60]; // PCP MAP request size
-
-			// PCP Common Header
-			request[0] = 2; // Version
-			request[1] = 1; // MAP Opcode
-			Array.Copy(BitConverter.GetBytes(IPAddress.HostToNetworkOrder(lifetime)), 0, request, 4, 4);
-
-			// Client IP Address (16 bytes)
-			byte[] clientIpBytes = localIPv4.MapToIPv6().GetAddressBytes();
-			Array.Copy(clientIpBytes, 0, request, 8, 16);
-
-			// Mapping Nonce (96 bits = 12 bytes)
-			byte[] nonce = new byte[12];
-			RandomNumberGenerator.Fill(nonce);
-			Array.Copy(nonce, 0, request, 24, 12);
-
-			// MAP Opcode fields
-			request[36] = 17; // Protocol = UDP (17)
-
-			// Internal port
-			Array.Copy(BitConverter.GetBytes(IPAddress.HostToNetworkOrder((short)requestedport)), 0, request, 40, 2);
-
-			// Suggested external port
-			Array.Copy(BitConverter.GetBytes(IPAddress.HostToNetworkOrder((short)requestedport)), 0, request, 42, 2);
-
-			using var client = new UdpClient();
-			client.Client.ReceiveTimeout = 3000;
-
-			client.Send(request, request.Length, new IPEndPoint(NATIP, 5351));
-
-			try
-			{
-				var remote = new IPEndPoint(IPAddress.Any, 0);
-				byte[] response = client.Receive(ref remote);
-				Debug.WriteLine("PCP response received (" + response.Length + " bytes)");
-			}
-			catch (SocketException)
-			{
-				Debug.WriteLine("No PCP response received.");
-			}
-		}
-		public static IPAddress GetDefaultGateway()
-		{
-#if ANDROID
-			var p = new Process
-			{
-				StartInfo = new ProcessStartInfo
-				{
-					FileName = "/system/bin/ip",
-					Arguments = "route",
-					RedirectStandardOutput = true,
-					UseShellExecute = false,
-					CreateNoWindow = true
-				}
-			};
-			p.Start();
-			string output = p.StandardOutput.ReadToEnd();
-			var parts = output.Split('\n');
-			foreach (var line in parts)
-			{
-				if (line.StartsWith("default"))
-				{
-					var tokens = line.Split(' ');
-					int index = Array.IndexOf(tokens, "via");
-					if (index >= 0 && index + 1 < tokens.Length) return IPAddress.Parse(tokens[index + 1]);
-				}
-			}
-			return IPAddress.Parse("192.168.1.254"); // Common FALLBACK if parsing fails
-#else
-			var gateway_address = NetworkInterface.GetAllNetworkInterfaces()
-				.Where(e => e.OperationalStatus == OperationalStatus.Up)
-				.SelectMany(e => e.GetIPProperties().GatewayAddresses)
-				.Select(g => g?.Address)
-				.Where(a => a?.AddressFamily == AddressFamily.InterNetwork)
-				.FirstOrDefault();
-			if (gateway_address == null) return IPAddress.Parse("192.168.1.254"); // Common FALLBACK if parsing fails
-			return gateway_address;
-#endif
-		}
 		public enum MessageType
 		{
 			txt = (byte)1,

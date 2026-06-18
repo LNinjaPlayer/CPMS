@@ -62,25 +62,25 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Compile Update="CP.xaml.cs">
+	  <Compile Update="Pages\CP.xaml.cs">
 	    <DependentUpon>CP.xaml</DependentUpon>
 	  </Compile>
-	  <Compile Update="NewCPPage.xaml.cs">
+	  <Compile Update="Pages\NewCPPage.xaml.cs">
 	    <DependentUpon>NewCPPage.xaml</DependentUpon>
 	  </Compile>
 	</ItemGroup>
 
 	<ItemGroup>
-	  <MauiXaml Update="CP.xaml">
+	  <MauiXaml Update="Pages\CP.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
-	  <MauiXaml Update="NewCPPage.xaml">
+	  <MauiXaml Update="Pages\NewCPPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
-	  <MauiXaml Update="PasswordPage.xaml">
+	  <MauiXaml Update="Pages\PasswordPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
-	  <MauiXaml Update="SettingsPage.xaml">
+	  <MauiXaml Update="Pages\SettingsPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	</ItemGroup>

@@ -1,5 +1,7 @@
 ﻿using System.Text;
 using System.Xml.Serialization;
+using CPMS.Methods;
+
 #pragma warning disable CA2249
 namespace CPMS
 {
